@@ -1255,21 +1255,63 @@ const lines = data.split("\n");
 
 // Tree = { name: string, weight: number, children: Tree[] }
 // Forest = Tree[]
-const parentSet = new Set();
-const childrenSet = new Set();
+const forest = new Map(); // treeName => tree
+const lookback = new Map(); // childName => parent
 
 for (const line of lines) {
   const [id, childrenStr = ""] = line.split(" -> ");
   const [name, weightInParens] = id.split(" ");
   const weight = Number(weightInParens.slice(1, -1));
   const children = childrenStr ? childrenStr.split(", ") : [];
-  // const tree = { name, weight, children };
+  const tree = { name, weight, children: new Set() };
 
-  // forest.set(name, tree);
-  parentSet.add(name);
-  children.forEach(child => childrenSet.add(child));
+  if (lookback.has(name)) {
+    const parent = lookback.get(name);
+    parent.children.add(tree);
+  } else {
+    forest.set(name, tree);
+  }
+
+  children.forEach(childName => {
+    if (forest.has(childName)) {
+      const child = forest.get(childName);
+      forest.delete(childName);
+      tree.children.add(child);
+    } else {
+      lookback.set(childName, tree);
+    }
+  });
 }
 
-childrenSet.forEach(child => parentSet.delete(child));
+const tree = [...forest.values()][0];
 
-console.log(parentSet);
+function weight(tree) {
+  if (tree.sumWeight) {
+    return tree.sumWeight;
+  } else {
+    const sumWeight = [...tree.children].reduce((acc, tree) => weight(tree) + acc, 0) + tree.weight;
+    tree.sumWeight = sumWeight;
+
+    return sumWeight;
+  }
+}
+
+function followOddWeight(tree, extra) {
+  const counts = [...tree.children].reduce((acc, child) => {
+    const set = acc.get(weight(child)) || new Set();
+    set.add(child);
+    acc.set(weight(child), set);
+    return acc;
+  }, new Map());
+
+  if (counts.size < 2) {
+    return [tree, extra];
+  } else {
+    return followOddWeight(
+      [...[...counts].find(([weight, children]) => children.size === 1)[1]][0],
+      counts
+    );
+  }
+}
+
+console.log(followOddWeight(tree));
