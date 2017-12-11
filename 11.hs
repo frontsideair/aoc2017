@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 import Data.List.Split
 import Data.Char
 
@@ -19,12 +21,20 @@ walk offset direction = case direction of
   SW -> offset { ne = ne offset - 1 }
   NW -> offset { se = se offset - 1 }
 
+walkAll :: [Direction] -> Offset
+walkAll = foldl walk initialOffset
+
+distance Offset { n, ne, se } = abs ne + max (abs n) (abs se)
+
+walkAll2 :: [Direction] -> (Offset, Int)
+walkAll2 = foldl
+  (\(offset, acc) d -> (walk offset d, max acc (distance offset)))
+  (initialOffset, 0)
+
 main :: IO ()
 main = do
   contents <- readFile "./11-input.txt"
   let directions = read <$> (splitOn "," (toUpper <$> contents))
-  print $ walkAll directions
-  return ()
-
-walkAll :: [Direction] -> Offset
-walkAll = foldl walk initialOffset
+  let offset     = walkAll directions
+  print $ distance offset
+  print $ walkAll2 directions
