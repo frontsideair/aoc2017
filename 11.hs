@@ -6,6 +6,7 @@ import Data.Char
 data Direction = N | NE | SE | S | SW | NW deriving (Read, Show, Eq, Ord)
 data Offset = Offset { n :: Int, ne :: Int, se :: Int } deriving Show
 
+initialOffset :: Offset
 initialOffset = Offset
   { n  = 0
   , ne = 0
@@ -24,6 +25,7 @@ walk offset direction = case direction of
 walkAll :: [Direction] -> Offset
 walkAll = foldl walk initialOffset
 
+distance :: Offset -> Int
 distance Offset { n, ne, se } = abs ne + max (abs n) (abs se)
 
 walkAll2 :: [Direction] -> (Offset, Int)
@@ -34,7 +36,7 @@ walkAll2 = foldl
 main :: IO ()
 main = do
   contents <- readFile "./11-input.txt"
-  let directions = read <$> (splitOn "," (toUpper <$> contents))
+  let directions = read <$> splitOn "," (toUpper <$> contents)
   let offset     = walkAll directions
   print $ distance offset
   print $ walkAll2 directions
