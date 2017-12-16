@@ -1,6 +1,5 @@
 module KnotHash (hash, hashWithSalt, State(State, steps, list, skip, pos)) where
 
-import Text.Printf
 import Data.Bits
 import Data.List.Split
 import Data.Char
@@ -11,6 +10,9 @@ data State = State {
 , skip :: Int
 , pos :: Int
 } deriving Show
+
+salt :: [Int]
+salt = [17, 31, 73, 47, 23]
 
 rotateLeft :: Int -> [a] -> [a]
 rotateLeft n l = take (length l) $ drop n (cycle l)
@@ -42,8 +44,8 @@ hash_ State { steps = x:xs, list = l, skip = s, pos = p } = hash_ State
   -- rotate back
   knot     = rotateRight p reversed
 
-hashWithSalt :: String -> [Int] -> String
-hashWithSalt input salt =
+hashWithSalt :: String -> [Int]
+hashWithSalt input =
   let state = State
         { steps = (concat . replicate 64) (map ord input ++ salt)
         , list  = [0 .. 255]
@@ -53,5 +55,4 @@ hashWithSalt input salt =
       firstRound  = hash_ state
       chunks      = chunksOf 16 (list firstRound)
       secondRound = map (foldl1 xor) chunks
-      thirdRound  = concatMap (printf "%02x") secondRound
-  in  thirdRound
+  in  secondRound
