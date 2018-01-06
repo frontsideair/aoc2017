@@ -1,7 +1,6 @@
 import Text.ParserCombinators.Parsec
 import Data.List
 import Data.Maybe
-import Data.Semigroup (stimes)
 import Data.Monoid
 import qualified Data.Vector as V
 
@@ -71,7 +70,10 @@ consume ps (Exchange a b) = swap ps a b
 consume ps (Partner  a b) = swap ps (findPos a ps) (findPos b ps)
 
 mult :: Int
-mult = 1000
+mult = 1000000000
+
+run :: V.Vector Move -> V.Vector Char -> V.Vector Char
+run r p = foldl' consume p r
 
 main :: IO ()
 main = do
@@ -81,5 +83,9 @@ main = do
       putStrLn "Error parsing input:"
       print e
     Right r -> do
-      print $ foldl' consume programs r
-      -- print $ foldl consume programs (stimes mult r)
+      print $ run r programs
+      let period =
+            let (x:xs) = iterate (run r) programs
+            in  1 + length (takeWhile (/= x) xs)
+          iterations = mult `rem` period
+      print $ iterate (run r) programs !! iterations
