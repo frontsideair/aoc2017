@@ -1,112 +1,120 @@
-import Prelude hiding (lookup)
-import Data.List.Extra hiding (lookup)
-import Data.Maybe
-import Data.Hashable
-import Data.HashMap.Strict hiding (toList, foldl')
-import Data.Matrix hiding (fromList, matrix)
-import Text.ParserCombinators.Parsec hiding ((<|>))
-import qualified Text.ParserCombinators.Parsec as P
+{-# LANGUAGE TupleSections #-}
 
-data Pixel = On | Off deriving (Show, Eq)
-data Rule = Rule (Matrix Pixel) (Matrix Pixel) deriving Show
-type Rules = (HashMap (Matrix Pixel) (Matrix Pixel))
+import Control.Applicative ((<|>))
+import Control.Monad (when)
+import Data.List (transpose)
+import Data.Map (Map)
+import Data.Map.Strict ((!))
+import qualified Data.Map.Strict as Map
+import System.Environment (getArgs)
+import Text.Parsec (char, count, eof, many, newline)
+import Text.Parsec.Char (string)
+import Text.Parsec.Combinator (sepBy)
+import Text.Parsec.Prim (try)
+import Text.Parsec.String (Parser, parseFromFile)
 
-instance Hashable Pixel where
-  hashWithSalt salt On = hashWithSalt salt True
-  hashWithSalt salt Off = hashWithSalt salt False
+part1 :: IO ()
+part1 = do
+  input <- parseFromFile parser "21-input.txt" >>= either (error . show) return
+  -- print `traverse` (filter (\(k, v) -> length k /= 4) $ Map.toList input)
+  let stepper = step input
+  print $ length $ filter (== True) $ iterate stepper initialState !! 5
+  -- print $ f 3 initialState
+  -- print $ stepper initialState
+  -- print `traverse` Map.toList input
+  return ()
 
-instance (Hashable a) => Hashable (Matrix a) where
-  hashWithSalt salt matrix = hashWithSalt salt $ toList matrix -- does it fuse?
+type State = [Bool]
 
-pixel :: GenParser Char st Pixel
-pixel = On <$ char '#' P.<|> Off <$ char '.'
+type Rules = (Map [Bool] [Bool])
 
+initialState :: State
+initialState = [False, True, False, False, False, True, True, True, True]
 
-rule :: GenParser Char st (Matrix Pixel, Matrix Pixel)
+sqrt' :: Int -> Int
+sqrt' = floor . sqrt . fromIntegral
+
+f :: Int -> State -> [State]
+f n xs = cells
+  where
+    size = sqrt' $ length xs
+    numCells = size `div` n
+    cell xs' = concat $ take n $ take n <$> iterate (drop size) xs'
+    row xs'' = take numCells $ cell <$> iterate (drop n) xs''
+    cells = concat $ take numCells $ row <$> iterate (drop (n * size)) xs
+
+g :: Int -> [State] -> State
+g n xs = concat rows
+  where
+    numCells = sqrt' $ length xs
+    size = sqrt' . length . head $ xs
+    rowParts = fmap (take size . fmap (take size) <$> iterate (drop size)) xs
+    row = take numCells $ concat . concat . transpose . take numCells <$> iterate (drop numCells) rowParts
+    rows = row
+
+step :: Rules -> State -> State
+step rules state = g size $ index rules <$> f size state where size = if even (length state) then 2 else 3
+
+index :: (Ord k, Show k) => Map k v -> k -> v
+index m k = case Map.lookup k m of
+  Just v -> v
+  Nothing -> error $ "Key not found: " ++ show k
+
+part2 :: IO ()
+part2 = do
+  input <- parseFromFile parser "21-input.txt" >>= either (error . show) return
+  -- print `traverse` (filter (\(k, v) -> length k /= 4) $ Map.toList input)
+  let stepper = step input
+  print $ length $ filter (== True) $ iterate stepper initialState !! 18
+  return ()
+
+parser :: Parser Rules
+parser = Map.fromList . concat <$> (rule `sepBy` newline) <* eof
+
+rule :: Parser [([Bool], [Bool])]
 rule = do
   lhs <- many pixel `sepBy` char '/'
-  _   <- string " => "
-  rhs <- many pixel `sepBy` char '/'
-  return $ (fromLists lhs, fromLists rhs)
+  string " => "
+  rhs <- try threes <|> fours
+  return $ (,rhs) <$> rotations lhs
 
-rulesParser :: GenParser Char st Rules
-rulesParser = do
-  xs <- rule `sepBy` char '\n'
-  return $ fromList (xs >>= permute)
+threes :: Parser [Bool]
+threes = do
+  row1 <- count 3 pixel
+  char '/'
+  row2 <- count 3 pixel
+  char '/'
+  row3 <- count 3 pixel
+  return $ concat [row1, row2, row3]
 
-initial :: Matrix Pixel
-initial = fromLists [[Off, On, Off], [Off, Off, On], [On, On, On]]
+fours :: Parser [Bool]
+fours = do
+  row1 <- count 4 pixel
+  char '/'
+  row2 <- count 4 pixel
+  char '/'
+  row3 <- count 4 pixel
+  char '/'
+  row4 <- count 4 pixel
+  return $ concat [row1, row2, row3, row4]
 
-step :: Rules -> Matrix Pixel -> Matrix Pixel
-step rules matrix = if ncols matrix `rem` 2 == 0
-  then step' 2 rules matrix -- break into twos, enhance
-  else step' 3 rules matrix -- break into threes, enhance
+pixel :: Parser Bool
+pixel = True <$ char '#' <|> False <$ char '.'
 
-step' :: Int -> Rules -> Matrix Pixel -> Matrix Pixel
-step' n rules matrix =
-  let cols = ncols matrix
-      rows = nrows matrix
-      f    = step' n rules
-  in  if cols == n
-        then if rows == n
-          then fromJust $ lookup matrix rules -- head [a | Just a <- fmap (\f -> lookup (f matrix) rules) transformations]
-          else
-            let hd = submatrix 1 n 1 n matrix
-                tl = submatrix (n + 1) rows 1 n matrix
-            in  (f hd) <-> (f tl) -- destructure rows
-        else if rows == n
-          then
-            let hd = submatrix 1 n 1 n matrix
-                tl = submatrix 1 n (n + 1) cols matrix
-            in  (f hd) <|> (f tl) -- destructure cols
-          else
-            let (tl, tr, bl, br) = splitBlocks n n matrix
-            in  (f tl <|> f tr) <-> (f bl <|> f br) -- destructure both
-
--- rot right
--- transpose
-rot :: Matrix a -> Matrix a
-rot matrix = case toLists matrix of
-  [[a, b], [c, d]] -> fromLists [[c, a], [d, b]]
-  [[a, b, c], [d, e, f], [g, h, i]] ->
-    fromLists [[g, d, a], [h, e, b], [i, f, c]]
-
--- flip horizontally
--- multiply with something?
-flip' :: Matrix a -> Matrix a
-flip' matrix = case toLists matrix of
-  [[a, b], [c, d]] -> fromLists [[b, a], [d, c]]
-  [[a, b, c], [d, e, f], [g, h, i]] ->
-    fromLists [[c, b, a], [f, e, d], [i, h, g]]
-
-permute :: (Matrix a, Matrix a) -> [(Matrix a, Matrix a)]
-permute (a, b) =
-  [ (a                          , b)
-  , (rot a                      , b)
-  , ((rot . rot) a              , b)
-  , ((rot . rot . rot) a        , b)
-  , (flip' a                    , b)
-  , ((flip' . rot) a            , b)
-  , ((flip' . rot . rot) a      , b)
-  , ((flip' . rot . rot . rot) a, b)
-  ]
-
-toInt :: Num n => Pixel -> n
-toInt On  = 1
-toInt Off = 0
+rotations :: [[a]] -> [[a]]
+rotations xs = concat <$> [xs1, xs2, xs3, xs4, xs5, xs6, xs7, xs8]
+  where
+    xs1 = xs
+    xs2 = transpose xs
+    xs3 = reverse xs
+    xs4 = transpose xs3
+    xs5 = reverse <$> xs
+    xs6 = transpose xs5
+    xs7 = reverse xs5
+    xs8 = transpose xs7
 
 main :: IO ()
 main = do
-  contents <- readFile "./21-input.txt"
-  case parse rulesParser "(stdin)" contents of
-    Left e -> do
-      putStrLn "Error parsing input:"
-      print e
-    Right rules -> do
-      -- print rules
-      -- let matrix = iterate (step rules) initial !! 5
-      -- let count  = foldl' (\acc n -> toInt n + acc) 0 (toList matrix)
-      -- print count
-      let matrix' = iterate (step rules) initial !! 15 -- 18
-      let count'  = foldl' (\acc n -> toInt n + acc) 0 (toList matrix')
-      print count'
+  arg <- head . (++ ["all"]) <$> getArgs
+  when (arg == "all" || arg == "part1") part1
+  when (arg == "all" || arg == "part2") part2
